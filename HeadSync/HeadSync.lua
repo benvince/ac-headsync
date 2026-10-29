@@ -1,4 +1,4 @@
--- Head Sync v1.1 — https://github.com/benvince/ac-headsync
+-- Head Sync v1.0 — https://github.com/benvince/ac-headsync
 -- Lets other players see your head move online (turn, nod, tilt).
 -- Every player needs this app installed, on a server that relays CSP client
 -- messages (AssettoServer with EnableClientMessages: true).
