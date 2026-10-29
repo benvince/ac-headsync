@@ -1,5 +1,5 @@
--- Head Sync v1.0 — https://github.com/benvince/ac-headsync
--- Lets other players see your head move online (turn, nod, tilt, lean).
+-- Head Sync v1.1 — https://github.com/benvince/ac-headsync
+-- Lets other players see your head move online (turn, nod, tilt).
 -- Every player needs this app installed, on a server that relays CSP client
 -- messages (AssettoServer with EnableClientMessages: true).
 
@@ -7,15 +7,12 @@
 -- TWEAKS
 ---------------------------------------------------------------------------
 local HEAD_FILTER = '{ DRIVER:RIG_Head }'  -- standard Kunos driver rig head bone
-local NECK_FILTER = '{ DRIVER:RIG_Nek }'   -- its parent (Kunos spelling), used for lean
 local SEND_HZ     = 15                     -- messages per second; keep it modest
 local SMOOTHING   = 10                     -- higher = snappier, lower = smoother
 
 local MAX_YAW     = math.rad(80)           -- clamps, so nobody goes full owl
 local MAX_PITCH   = math.rad(40)
 local MAX_ROLL    = math.rad(35)
-local MAX_LEAN    = 0.20                   -- metres in any direction
-local LEAN_SCALE  = 1.0                    -- tone lean down if necks look stretchy
 
 local YAW_SIGN    = 1                      -- flip to -1 if a movement goes the wrong way
 local PITCH_SIGN  = 1
@@ -36,16 +33,15 @@ local ROLL_AXIS   = vec3(0, 0, 1)
 -- State
 ---------------------------------------------------------------------------
 local remote = {}          -- [carIndex] = smoothed + target values
-local headNodes, neckNodes = {}, {}
+local headNodes = {}
 local baseTransforms = {}  -- [carIndex][i] = resting head transform (local)
 local sendTimer = 0
-local enabled, applyRoll, applyLean = true, true, true
-local rest = nil           -- our own resting roll / head position, for recentring
-local leanStatus = ''
+local enabled, applyRoll = true, true
+local rest = nil           -- our own resting roll, for recentring
 
-local test = { on = false, sweep = false, t = 0, yaw = 0, pitch = 0, roll = 0, leanX = 0 }
+local test = { on = false, sweep = false, t = 0, yaw = 0, pitch = 0, roll = 0 }
 
-local FIELDS = { 'yaw', 'pitch', 'roll', 'lx', 'ly', 'lz' }
+local FIELDS = { 'yaw', 'pitch', 'roll' }
 
 local function findNodes(cache, carIndex, filter)
   local n = cache[carIndex]
@@ -63,33 +59,27 @@ local function nodeAt(group, i)
 end
 
 local function resetBones()
-  headNodes, neckNodes, baseTransforms, rest = {}, {}, {}, nil
+  headNodes, baseTransforms, rest = {}, {}, nil
 end
 
 ---------------------------------------------------------------------------
 -- Networking
 ---------------------------------------------------------------------------
 local sendHead = ac.OnlineEvent({
-  ac.StructItem.key('benHeadSync_v2'),
+  ac.StructItem.key('benHeadSync_v3'),
   yaw   = ac.StructItem.float(),
   pitch = ac.StructItem.float(),
   roll  = ac.StructItem.float(),
-  lx    = ac.StructItem.float(),
-  ly    = ac.StructItem.float(),
-  lz    = ac.StructItem.float(),
 }, function (sender, msg)
   if sender == nil or sender.index == 0 then return end
   local r = remote[sender.index]
   if not r then
-    r = { yaw = 0, pitch = 0, roll = 0, lx = 0, ly = 0, lz = 0, t = {} }
+    r = { yaw = 0, pitch = 0, roll = 0, t = {} }
     remote[sender.index] = r
   end
   r.t.yaw   = math.clamp(msg.yaw,   -MAX_YAW,   MAX_YAW)
   r.t.pitch = math.clamp(msg.pitch, -MAX_PITCH, MAX_PITCH)
   r.t.roll  = math.clamp(msg.roll,  -MAX_ROLL,  MAX_ROLL)
-  r.t.lx    = math.clamp(msg.lx, -MAX_LEAN, MAX_LEAN)
-  r.t.ly    = math.clamp(msg.ly, -MAX_LEAN, MAX_LEAN)
-  r.t.lz    = math.clamp(msg.lz, -MAX_LEAN, MAX_LEAN)
   r.lastSeen = os.preciseClock()
 end)
 
@@ -105,7 +95,7 @@ local function ownHeadWorld()
   return nil
 end
 
--- Everything in the car's own frame: angles in radians, lean in metres.
+-- Head angles relative to the car, in radians.
 local function readOwnHead()
   local m = ownHeadWorld()
   if not m then return nil end
@@ -118,17 +108,13 @@ local function readOwnHead()
   local pitch = math.asin(math.clamp(look:dot(car.up), -1, 1))
   local roll  = math.atan2(side:dot(car.up), up:dot(car.up))
 
-  local d = m.position - car.position
-  local px, py, pz = d:dot(car.side), d:dot(car.up), d:dot(car.look)
-
-  -- First reading (or after Recentre) becomes "neutral" for roll and lean
-  if not rest then rest = { roll = roll, px = px, py = py, pz = pz } end
+  -- First reading (or after Recentre) becomes "neutral" for roll
+  if not rest then rest = { roll = roll } end
 
   return {
     yaw   = yaw * YAW_SIGN,
     pitch = pitch * PITCH_SIGN,
     roll  = (roll - rest.roll) * ROLL_SIGN,
-    lx = px - rest.px, ly = py - rest.py, lz = pz - rest.pz,
   }
 end
 
@@ -173,17 +159,9 @@ end
 local function applyHead(idx, r)
   local heads = findNodes(headNodes, idx, HEAD_FILTER)
   if not heads or #heads == 0 then return end
-  local necks = findNodes(neckNodes, idx, NECK_FILTER)
-  local car = ac.getCar(idx)
 
   local rot = mat4x4.rotation(r.pitch, PITCH_AXIS):mul(mat4x4.rotation(r.yaw, YAW_AXIS))
   if applyRoll then rot = mat4x4.rotation(r.roll, ROLL_AXIS):mul(rot) end
-
-  -- Lean offset in world space, using the other car's orientation
-  local worldLean = nil
-  if applyLean and car then
-    worldLean = car.side * (r.lx * LEAN_SCALE) + car.up * (r.ly * LEAN_SCALE) + car.look * (r.lz * LEAN_SCALE)
-  end
 
   baseTransforms[idx] = baseTransforms[idx] or {}
   local bases = baseTransforms[idx]
@@ -194,16 +172,6 @@ local function applyHead(idx, r)
 
     -- Always rotate from the resting pose (nothing resets the bone each frame)
     m:set(rot:mul(bases[i]))
-
-    -- Lean: convert the world offset into the neck's space and nudge the head
-    if worldLean and necks and #necks > 0 then
-      local ok = pcall(function ()
-        local neckWorld = nodeAt(necks, i):getWorldTransformationRaw()
-        local localLean = neckWorld:inverse():transformVector(worldLean)
-        m.position:set(bases[i].position + localLean)
-      end)
-      if not ok then leanStatus = 'Lean not supported here' end
-    end
 
     if head == heads then break end
   end
@@ -225,13 +193,9 @@ function script.update(dt)
       test.yaw   = math.sin(test.t * 1.2) * 60
       test.pitch = math.sin(test.t * 0.7) * 20
       test.roll  = math.sin(test.t * 0.9) * 20
-      test.leanX = math.sin(test.t * 0.5) * 10
     end
-    fake = {
-      yaw = math.rad(test.yaw), pitch = math.rad(test.pitch), roll = math.rad(test.roll),
-      lx = test.leanX / 100, ly = 0, lz = 0,
-    }
-    remote[0] = remote[0] or { yaw = 0, pitch = 0, roll = 0, lx = 0, ly = 0, lz = 0, t = {} }
+    fake = { yaw = math.rad(test.yaw), pitch = math.rad(test.pitch), roll = math.rad(test.roll) }
+    remote[0] = remote[0] or { yaw = 0, pitch = 0, roll = 0, t = {} }
     for _, f in ipairs(FIELDS) do remote[0].t[f] = fake[f] end
     remote[0].lastSeen = os.preciseClock()
   else
@@ -311,7 +275,6 @@ end
 function windowMain(dt)
   if ui.checkbox('Enabled', enabled) then enabled = not enabled end
   if ui.checkbox('Show head tilt (roll)', applyRoll) then applyRoll = not applyRoll end
-  if ui.checkbox('Show leaning', applyLean) then applyLean = not applyLean end
 
   ui.separator()
   if ui.checkbox('Test mode (fake head)', test.on) then test.on = not test.on end
@@ -321,8 +284,7 @@ function windowMain(dt)
       test.yaw   = ui.slider('##yaw',   test.yaw,   -80, 80, 'Yaw: %.0f°')
       test.pitch = ui.slider('##pitch', test.pitch, -40, 40, 'Pitch: %.0f°')
       test.roll  = ui.slider('##roll',  test.roll,  -35, 35, 'Roll: %.0f°')
-      test.leanX = ui.slider('##lean',  test.leanX, -20, 20, 'Lean sideways: %.0f cm')
-      if ui.button('Centre') then test.yaw, test.pitch, test.roll, test.leanX = 0, 0, 0, 0 end
+      if ui.button('Centre') then test.yaw, test.pitch, test.roll = 0, 0, 0 end
     end
   end
 
@@ -331,7 +293,6 @@ function windowMain(dt)
   if h then
     ui.text(string.format('You: yaw %.0f°  pitch %.0f°  roll %.0f°',
       math.deg(h.yaw), math.deg(h.pitch), math.deg(h.roll)))
-    ui.text(string.format('Lean: side %.0f  up %.0f  fwd %.0f cm', h.lx * 100, h.ly * 100, h.lz * 100))
   else
     ui.text('You: head bone not found')
   end
@@ -345,7 +306,6 @@ function windowMain(dt)
   for i in pairs(remote) do if i ~= 0 then count = count + 1 end end
   ui.text('Players sending heads: ' .. count)
   if ui.button('Re-find head bones') then resetBones() end
-  if leanStatus ~= '' then ui.text(leanStatus) end
 
   ui.separator()
   local n0 = findNodes(headNodes, 0, HEAD_FILTER)

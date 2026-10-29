@@ -8,7 +8,6 @@ Without it, everyone else sees your driver staring straight ahead like a mannequ
 
 - **Turning and nodding:** look left, right, up or down and your driver does the same on other people's screens
 - **Head tilt:** cock your head and it tilts
-- **Leaning:** lean in, out or sideways and the head follows (capped, so nobody turns into a giraffe)
 - **Recentres with VR:** when you recentre your headset, it resets too
 - **Light on the network:** about 15 tiny updates a second, smoothed out at the other end
 
@@ -56,9 +55,9 @@ No VR to hand? Tick **Test mode** and drag the sliders, or tick **Auto sweep**, 
 | Option | What it does |
 |---|---|
 | **Enabled** | Turns the whole thing on or off |
-| **Show head tilt / Show leaning** | Turn these off if they look odd on your end |
+| **Show head tilt** | Turn it off if it looks odd on your end |
 | **Test mode** | Fake head movement from sliders, for testing without VR |
-| **Recentre** | Sit normally, look ahead, press it. Sets your "neutral" for tilt and lean. |
+| **Recentre** | Sit normally, look ahead, press it. Sets your "neutral" for head tilt. |
 | **Auto-recentre with VR recentre** | Does the above automatically whenever you recentre your headset |
 | **Players sending heads** | How many other players you're receiving from |
 | **Re-find head bones** | Use it if someone's head ends up facing somewhere strange |
@@ -100,8 +99,7 @@ The minimum CSP version isn't optional: AssettoServer won't start with client me
 | **Your yaw/pitch numbers don't move** | Check **Head bones on your car** isn't 0. If it is, your driver model uses unusual bone names, so see below. |
 | **Heads turn the wrong way, or tilt instead of turning** | Flip the `_SIGN` or swap the `_AXIS` settings at the top of `HeadSync.lua` |
 | **A head faces somewhere odd** | Press **Re-find head bones** |
-| **Tilt or lean is off after recentring** | Press **Recentre** while sitting normally and looking ahead |
-| **Necks look stretchy when leaning** | Lower `LEAN_SCALE`, or untick **Show leaning** |
+| **Tilt is off after recentring** | Press **Recentre** while sitting normally and looking ahead |
 | **Unusual driver model** | Press **Dump node tree**. It writes `nodes.txt` to the app folder. Find the head bone in it and put its name in `HEAD_FILTER`. |
 
 ## Settings
@@ -110,11 +108,10 @@ These live at the top of `HeadSync/HeadSync.lua`. You shouldn't need them, but j
 
 | Setting | Default | What it's for |
 |---|---|---|
-| `HEAD_FILTER` / `NECK_FILTER` | `DRIVER:RIG_Head` / `DRIVER:RIG_Nek` | Bone names on the standard Kunos driver |
+| `HEAD_FILTER` | `DRIVER:RIG_Head` | Head bone on the standard Kunos driver |
 | `SEND_HZ` | `15` | Updates per second |
 | `SMOOTHING` | `10` | Higher is snappier, lower is smoother |
 | `MAX_YAW` / `MAX_PITCH` / `MAX_ROLL` | 80° / 40° / 35° | Limits, so nobody goes full owl |
-| `MAX_LEAN` / `LEAN_SCALE` | 20 cm / 1.0 | Lean limit and strength |
 | `*_SIGN` | `1` | Flip to `-1` if a movement goes the wrong way |
 | `*_AXIS` | Y / X / Z | Bone rotation axes, for oddly built driver models |
 | `AUTO_RECENTRE`, `SNAP_*` | on | How a VR recentre is detected |
@@ -122,7 +119,7 @@ These live at the top of `HeadSync/HeadSync.lua`. You shouldn't need them, but j
 
 ## How it works
 
-1. CSP already turns your own driver's head to follow your headset. Head Sync reads that head bone and works out your turn, nod, tilt and lean relative to the car.
+1. CSP already turns your own driver's head to follow your headset. Head Sync reads that head bone and works out your turn, nod and tilt relative to the car.
 2. It sends those numbers through the server about 15 times a second, using CSP's online messaging (`ac.OnlineEvent`).
 3. When numbers arrive from another player, it smooths them and moves that car's driver head from its resting pose. It does this for every copy of the driver model, since cars carry more than one level of detail.
 
@@ -131,7 +128,7 @@ These live at the top of `HeadSync/HeadSync.lua`. You shouldn't need them, but j
 - Only works on servers that pass CSP client messages along (AssettoServer with the settings above).
 - Everyone involved needs the app, and the same version of it.
 - Built around the standard Kunos driver rig. Most cars use it, but custom driver models might not.
-- Leaning moves just the head, not the shoulders, so very big leans can look a bit odd.
+- Leaning isn't shared. Moving the head on its own stretched the neck while the shoulders stayed put, which looked worse than not doing it.
 
 ## Making a release (for maintainers)
 
