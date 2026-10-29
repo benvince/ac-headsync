@@ -1,0 +1,28 @@
+# Push a tag like v1.0 and this builds the Content Manager zip
+# and attaches it to a GitHub release.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build zip
+        run: |
+          mkdir -p dist/apps/lua
+          cp -r HeadSync dist/apps/lua/
+          rm -f dist/apps/lua/HeadSync/nodes.txt
+          cd dist && zip -r "../HeadSync-${GITHUB_REF_NAME}.zip" apps
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: HeadSync-*.zip
+          generate_release_notes: true

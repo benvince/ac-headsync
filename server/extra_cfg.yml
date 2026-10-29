@@ -1,0 +1,9 @@
+# Head Sync — the two AssettoServer settings it needs.
+# Add these to your server's extra_cfg.yml (if hosting through Content Manager,
+# that's the preset folder next to server_cfg.ini). Leave the rest of your file as it is.
+
+# Let CSP Lua scripts send messages to each other through the server
+EnableClientMessages: true
+
+# Client messages need CSP 0.2.0 (build 2651) or newer, or the server won't start
+MinimumCSPVersion: 2651

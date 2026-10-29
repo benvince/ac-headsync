@@ -1,0 +1,6 @@
+# Build output
+dist/
+*.zip
+
+# Debug dump from the app's "Dump node tree" button
+HeadSync/nodes.txt
