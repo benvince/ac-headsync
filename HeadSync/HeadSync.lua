@@ -10,12 +10,12 @@ local HEAD_FILTER = '{ DRIVER:RIG_Head }'  -- standard Kunos driver rig head bon
 local SEND_HZ     = 15                     -- messages per second; keep it modest
 local SMOOTHING   = 10                     -- higher = snappier, lower = smoother
 
-local MAX_YAW     = math.rad(80)           -- clamps, so nobody goes full owl
+local MAX_YAW     = math.rad(90)           -- clamps, so nobody goes full owl
 local MAX_PITCH   = math.rad(40)
 local MAX_ROLL    = math.rad(35)
 
 local YAW_SIGN    = 1                      -- flip to -1 if a movement goes the wrong way
-local PITCH_SIGN  = 1
+local PITCH_SIGN  = -1
 local ROLL_SIGN   = 1
 
 local YAW_AXIS    = vec3(0, 1, 0)          -- bone-local rotation axes
@@ -233,7 +233,7 @@ function windowMain(dt)
   if test.on then
     if ui.checkbox('Auto sweep', test.sweep) then test.sweep = not test.sweep end
     if not test.sweep then
-      test.yaw   = ui.slider('##yaw',   test.yaw,   -80, 80, 'Yaw: %.0f°')
+      test.yaw   = ui.slider('##yaw',   test.yaw,   -90, 90, 'Yaw: %.0f°')
       test.pitch = ui.slider('##pitch', test.pitch, -40, 40, 'Pitch: %.0f°')
       test.roll  = ui.slider('##roll',  test.roll,  -35, 35, 'Tilt: %.0f°')
       if ui.button('Centre') then test.yaw, test.pitch, test.roll = 0, 0, 0 end
