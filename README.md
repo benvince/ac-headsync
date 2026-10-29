@@ -8,7 +8,6 @@ Without it, everyone else sees your driver staring straight ahead like a mannequ
 
 - **Turning and nodding:** look left, right, up or down and your driver does the same on other people's screens
 - **Head tilt:** cock your head and it tilts
-- **Recentres with VR:** when you recentre your headset, it resets too
 - **Light on the network:** about 15 tiny updates a second, smoothed out at the other end
 
 Works with VR, and should work with anything else that moves your cockpit head (TrackIR and the like).
@@ -57,9 +56,10 @@ No VR to hand? Tick **Test mode** and drag the sliders, or tick **Auto sweep**, 
 | **Enabled** | Turns the whole thing on or off |
 | **Show head tilt** | Turn it off if it looks odd on your end |
 | **Test mode** | Fake head movement from sliders, for testing without VR |
-| **Recentre** | Sit normally, look ahead, press it. Sets your "neutral" for head tilt. |
-| **Auto-recentre with VR recentre** | Does the above automatically whenever you recentre your headset |
+| **Recentre tilt** | Sit upright and press it. Sets your "neutral" for head tilt. |
 | **Players sending heads** | How many other players you're receiving from |
+| **Sent / Received** | Message counters. Both should keep climbing while you're with someone else who has the app. |
+| **Message format** | Must match on everyone's screen. If it doesn't, someone is on an older version. |
 | **Re-find head bones** | Use it if someone's head ends up facing somewhere strange |
 | **Scan / Dump node tree** | Debug tools for unusual driver models (see [Troubleshooting](#troubleshooting)) |
 
@@ -93,13 +93,13 @@ The minimum CSP version isn't optional: AssettoServer won't start with client me
 
 | Problem | Fix |
 |---|---|
-| **Players sending heads: 0** | The server isn't passing messages along. Check it's AssettoServer with `EnableClientMessages: true`, and that the other player has the app (and the same version). |
+| **Players sending heads: 0** | The server isn't passing messages along. Check it's AssettoServer with `EnableClientMessages: true`, and that the other player has the app. Compare **Message format** on both screens; if they differ, someone needs to update. |
 | **Server won't start: "minimum required CSP version of 0.2.0 (2651)"** | Set `MinimumCSPVersion: 2651` in `extra_cfg.yml` |
 | **Can't find `extra_cfg.yml`** | Just create it in the preset folder. Anything you leave out uses AssettoServer's defaults. |
 | **Your yaw/pitch numbers don't move** | Check **Head bones on your car** isn't 0. If it is, your driver model uses unusual bone names, so see below. |
 | **Heads turn the wrong way, or tilt instead of turning** | Flip the `_SIGN` or swap the `_AXIS` settings at the top of `HeadSync.lua` |
 | **A head faces somewhere odd** | Press **Re-find head bones** |
-| **Tilt is off after recentring** | Press **Recentre** while sitting normally and looking ahead |
+| **Tilt is off, even when sitting upright** | Press **Recentre tilt** while sitting upright |
 | **Unusual driver model** | Press **Dump node tree**. It writes `nodes.txt` to the app folder. Find the head bone in it and put its name in `HEAD_FILTER`. |
 
 ## Settings
@@ -111,11 +111,10 @@ These live at the top of `HeadSync/HeadSync.lua`. You shouldn't need them, but j
 | `HEAD_FILTER` | `DRIVER:RIG_Head` | Head bone on the standard Kunos driver |
 | `SEND_HZ` | `15` | Updates per second |
 | `SMOOTHING` | `10` | Higher is snappier, lower is smoother |
-| `MAX_YAW` / `MAX_PITCH` / `MAX_ROLL` | 80° / 40° / 35° | Limits, so nobody goes full owl |
-| `*_SIGN` | `1` | Flip to `-1` if a movement goes the wrong way |
+| `MAX_YAW` / `MAX_PITCH` / `MAX_ROLL` | 90° / 40° / 35° | Limits, so nobody goes full owl |
+| `*_SIGN` | `1` (pitch `-1`) | Flip if a movement goes the wrong way |
 | `*_AXIS` | Y / X / Z | Bone rotation axes, for oddly built driver models |
-| `AUTO_RECENTRE`, `SNAP_*` | on | How a VR recentre is detected |
-| `RECENTRE_KEY` | none | Optional key to recentre, e.g. `ui.KeyIndex.Home` |
+| `MESSAGE_KEY` | `benHeadSync_v4` | Message format name. Change it whenever the message layout changes, so old and new versions don't mix. |
 
 ## How it works
 
