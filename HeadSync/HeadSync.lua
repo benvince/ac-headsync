@@ -33,6 +33,7 @@ local remote = {}          -- [carIndex] = { yaw, pitch, roll, t = targets, last
 local headNodes = {}       -- cached head bones per car
 local baseTransforms = {}  -- [carIndex][i] = resting head transform
 local sendTimer = 0
+local FORGET_AFTER = 10    -- seconds of silence before a player's entry is dropped
 local enabled, showTilt = true, true
 local restRoll = nil       -- your own head tilt when sitting normally
 local sentCount, receivedCount, lastReceived = 0, 0, nil
@@ -50,6 +51,31 @@ end
 
 local function newRemote()
   return { yaw = 0, pitch = 0, roll = 0, t = { yaw = 0, pitch = 0, roll = 0 } }
+end
+
+-- Put a car's head bones back exactly as we found them, and forget the car.
+-- Used when the app is switched off or unloaded, and when a player goes quiet
+-- or leaves, so nobody is left frozen mid-glance.
+local function restoreHead(idx)
+  local heads, bases = headNodes[idx], baseTransforms[idx]
+  if heads and bases and #heads > 0 then
+    for i = 1, #heads do
+      local ok, head = pcall(function () return heads:at(i) end)
+      if not ok or not head then head = heads end
+      if bases[i] then
+        pcall(function () head:getTransformationRaw():set(bases[i]) end)
+      end
+      if head == heads then break end
+    end
+  end
+  remote[idx], baseTransforms[idx], headNodes[idx] = nil, nil, nil
+end
+
+local function restoreAll()
+  local ids = {}
+  for idx in pairs(baseTransforms) do ids[#ids + 1] = idx end
+  for idx in pairs(remote) do ids[#ids + 1] = idx end
+  for _, idx in ipairs(ids) do restoreHead(idx) end
 end
 
 ---------------------------------------------------------------------------
@@ -147,14 +173,18 @@ function script.update(dt)
     remote[0] = remote[0] or newRemote()
     remote[0].t.yaw, remote[0].t.pitch, remote[0].t.roll = fake.yaw, fake.pitch, fake.roll
     remote[0].lastSeen = os.preciseClock()
-  else
-    remote[0] = nil
+  elseif remote[0] then
+    restoreHead(0)
   end
 
   -- Send yours
+  -- Keep the leftover time rather than zeroing it, so the real rate is
+  -- SEND_HZ whatever the frame rate (zeroing it rounds up to whole frames)
+  local interval = 1 / SEND_HZ
   sendTimer = sendTimer + dt
-  if sendTimer > 1 / SEND_HZ then
-    sendTimer = 0
+  if sendTimer >= interval then
+    sendTimer = sendTimer - interval
+    if sendTimer >= interval then sendTimer = 0 end  -- after a hitch, don't burst
     local h = fake or readOwnHead()
     if h then
       sendHead(h)
@@ -164,14 +194,23 @@ function script.update(dt)
 
   -- Apply everyone else's
   local now = os.preciseClock()
-  local k = math.min(1, dt * SMOOTHING)
+  -- Exponential smoothing, so heads settle at the same speed at 30 or 144 fps
+  local k = 1 - math.exp(-dt * SMOOTHING)
+  local gone = {}
   for idx, r in pairs(remote) do
-    local stale = now - (r.lastSeen or 0) > 2   -- drift back to centre if they've gone quiet
-    r.yaw   = math.lerp(r.yaw,   stale and 0 or r.t.yaw,   k)
-    r.pitch = math.lerp(r.pitch, stale and 0 or r.t.pitch, k)
-    r.roll  = math.lerp(r.roll,  stale and 0 or r.t.roll,  k)
-    applyHead(idx, r)
+    local silent = now - (r.lastSeen or 0)
+    local car = ac.getCar(idx)
+    if idx ~= 0 and (silent > FORGET_AFTER or not car or not car.isConnected) then
+      gone[#gone + 1] = idx                     -- left, or stopped sending: tidy up
+    else
+      local stale = silent > 2                  -- gone quiet: drift back to centre
+      r.yaw   = math.lerp(r.yaw,   stale and 0 or r.t.yaw,   k)
+      r.pitch = math.lerp(r.pitch, stale and 0 or r.t.pitch, k)
+      r.roll  = math.lerp(r.roll,  stale and 0 or r.t.roll,  k)
+      applyHead(idx, r)
+    end
   end
+  for _, idx in ipairs(gone) do restoreHead(idx) end
 end
 
 ---------------------------------------------------------------------------
@@ -225,7 +264,10 @@ end
 -- Window
 ---------------------------------------------------------------------------
 function windowMain(dt)
-  if ui.checkbox('Enabled', enabled) then enabled = not enabled end
+  if ui.checkbox('Enabled', enabled) then
+    enabled = not enabled
+    if not enabled then restoreAll() end
+  end
   if ui.checkbox('Show head tilt', showTilt) then showTilt = not showTilt end
 
   ui.separator()
@@ -256,7 +298,7 @@ function windowMain(dt)
   ui.text(string.format('Sent %d  ·  Received %d%s', sentCount, receivedCount,
     lastReceived and string.format('  (last %.1fs ago)', os.preciseClock() - lastReceived) or ''))
   ui.text('Message format: ' .. MESSAGE_KEY)
-  if ui.button('Re-find head bones') then headNodes, baseTransforms, restRoll = {}, {}, nil end
+  if ui.button('Re-find head bones') then restoreAll(); restRoll = nil end
 
   ui.separator()
   local n0 = getHeadNode(0)
@@ -267,3 +309,16 @@ function windowMain(dt)
   for _, line in ipairs(scanResults) do ui.text(line) end
   if dumpStatus ~= '' then ui.textWrapped(dumpStatus) end
 end
+
+---------------------------------------------------------------------------
+-- Clean-up hooks
+---------------------------------------------------------------------------
+-- When the app is unloaded (closed, reloaded, session ends), put every head back
+pcall(function () ac.onRelease(restoreAll) end)
+
+-- When a player disconnects, tidy up straight away rather than waiting
+pcall(function ()
+  ac.onClientDisconnected(function (carIndex)
+    if remote[carIndex] or baseTransforms[carIndex] then restoreHead(carIndex) end
+  end)
+end)
